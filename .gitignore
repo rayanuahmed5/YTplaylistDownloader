@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+env/
+.venv/
+
+# Downloaded media (don't upload actual videos/audio to GitHub)
+*.mp4
+*.mp3
+*.webm
+*.mkv
+*.part
+*.ytdl
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
