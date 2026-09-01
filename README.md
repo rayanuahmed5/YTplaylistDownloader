@@ -19,7 +19,7 @@ Download entire YouTube playlists as high-quality MP4 videos or MP3 audio, using
 
 1. **Clone the repository**
    ```
-   git clone https://github.com/yourusername/YTplaylistDownloader.git
+   git clone https://github.com/rayanuahmed5/YTplaylistDownloader.git
    cd YTplaylistDownloader
    ```
 
