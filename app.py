@@ -1,11 +1,62 @@
 import sys
 import os
+import platform
+import shutil
+import subprocess
 from PyQt5 import QtWidgets, QtCore
 import yt_dlp
 
 
 def make_alpha_numeric(string):
     return ''.join(char for char in string if char.isalnum())
+
+
+def ensure_deno():
+    """
+    Make sure a JS runtime (deno) is available for yt-dlp so YouTube extraction
+    doesn't fall back to a degraded mode. Returns the path to the deno
+    executable if available (after installing it if needed), or None if it
+    could not be found/installed.
+    """
+    deno_path = shutil.which('deno')
+    if deno_path:
+        return deno_path
+
+    system = platform.system()
+
+    try:
+        if system == 'Windows':
+            subprocess.run(
+                ['winget', 'install', '-e', '--id', 'DenoLand.Deno', '--accept-package-agreements',
+                 '--accept-source-agreements'],
+                check=True,
+            )
+        elif system == 'Darwin':
+            if shutil.which('brew'):
+                subprocess.run(['brew', 'install', 'deno'], check=True)
+            else:
+                subprocess.run(['sh', '-c', 'curl -fsSL https://deno.land/install.sh | sh'], check=True)
+        elif system == 'Linux':
+            subprocess.run(['sh', '-c', 'curl -fsSL https://deno.land/install.sh | sh'], check=True)
+        else:
+            return None
+    except Exception:
+        return None
+
+    deno_path = shutil.which('deno')
+    if deno_path:
+        return deno_path
+
+    candidates = [
+        os.path.expanduser('~/.deno/bin/deno.exe'),
+        os.path.expanduser('~/.deno/bin/deno'),
+        os.path.expandvars(r'%USERPROFILE%\.deno\bin\deno.exe'),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+
+    return None
 
 
 class DownloadWorker(QtCore.QThread):
@@ -21,32 +72,68 @@ class DownloadWorker(QtCore.QThread):
 
     def run(self):
         try:
+            self.progress.emit("Checking for a JS runtime (deno)...")
+            deno_path = ensure_deno()
+            js_runtime_opts = {'js_runtimes': [f'deno:{deno_path}']} if deno_path else {}
+            if deno_path:
+                self.progress.emit(f"Using JS runtime: {deno_path}")
+            else:
+                self.progress.emit("No JS runtime found/installed — continuing without one "
+                                    "(some formats may be unavailable).")
+
             # Step 1: lightweight listing first (fast, avoids full metadata fetch per video)
             list_opts = {
                 'extract_flat': 'in_playlist',
                 'quiet': True,
+                **js_runtime_opts,
             }
             if self.ffmpeg_location:
                 list_opts['ffmpeg_location'] = self.ffmpeg_location
 
-            with yt_dlp.YoutubeDL(list_opts) as ydl:
-                playlist_info = ydl.extract_info(self.link, download=False)
+            try:
+                with yt_dlp.YoutubeDL(list_opts) as ydl:
+                    playlist_info = ydl.extract_info(self.link, download=False)
+            except Exception as e:
+                self.error.emit(f"Failed to fetch info for that URL: {e}")
+                return
 
-            playlist_title = make_alpha_numeric(playlist_info.get('title', 'playlist'))
-            entries = [e for e in playlist_info['entries'] if e]
+            if playlist_info is None:
+                self.error.emit("Could not extract any info from that URL. Is it valid/public?")
+                return
+
+            # Handle both playlists (have 'entries') and single videos (no 'entries' key)
+            raw_entries = playlist_info.get('entries')
+            if raw_entries is None:
+                entries = [playlist_info]
+                folder_title = playlist_info.get('title', 'video')
+            else:
+                entries = [e for e in raw_entries if e]
+                folder_title = playlist_info.get('title', 'playlist')
+
+            folder_title = make_alpha_numeric(folder_title) or 'downloads'
             total_count = len(entries)
 
-            if not os.path.exists(playlist_title):
-                os.mkdir(playlist_title)
+            if total_count == 0:
+                self.error.emit("No downloadable videos found at that URL "
+                                 "(all entries may be private/deleted).")
+                return
+
+            os.makedirs(folder_title, exist_ok=True)
 
             self.progress.emit(f"Total videos: {total_count}")
 
+            common_opts = {
+                'outtmpl': os.path.join(folder_title, '%(title)s.%(ext)s'),
+                'quiet': False,
+                'ignoreerrors': True,
+                'restrictfilenames': True,
+                **js_runtime_opts,
+            }
+
             if self.file_format == 'mp3':
                 ydl_opts = {
+                    **common_opts,
                     'format': 'bestaudio/best',
-                    'outtmpl': os.path.join(playlist_title, '%(title)s.%(ext)s'),
-                    'quiet': False,
-                    'ignoreerrors': True,
                     'postprocessors': [
                         {
                             'key': 'FFmpegExtractAudio',
@@ -57,11 +144,9 @@ class DownloadWorker(QtCore.QThread):
                 }
             else:
                 ydl_opts = {
+                    **common_opts,
                     'format': 'bestvideo+bestaudio/best',
                     'merge_output_format': 'mp4',
-                    'outtmpl': os.path.join(playlist_title, '%(title)s.%(ext)s'),
-                    'quiet': False,
-                    'ignoreerrors': True,
                 }
 
             if self.ffmpeg_location:
@@ -96,7 +181,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # URL input layout
         url_layout = QtWidgets.QHBoxLayout()
-        label = QtWidgets.QLabel("Playlist URL:")
+        label = QtWidgets.QLabel("URL (playlist or single video):")
         self.url_input = QtWidgets.QLineEdit()
         url_layout.addWidget(label)
         url_layout.addWidget(self.url_input)
@@ -152,7 +237,7 @@ class MainWindow(QtWidgets.QWidget):
     def on_download(self):
         link = self.url_input.text().strip()
         if not link:
-            QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a valid playlist URL.")
+            QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a valid URL.")
             return
 
         file_format = 'mp3' if self.mp3_radio.isChecked() else 'mp4'
