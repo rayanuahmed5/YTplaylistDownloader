@@ -124,6 +124,8 @@ class DownloadWorker(QtCore.QThread):
 
             common_opts = {
                 'outtmpl': os.path.join(folder_title, '%(title)s.%(ext)s'),
+                'download_archive': os.path.join(
+                    folder_title, f'.download_archive_{self.file_format}.txt'),
                 'quiet': False,
                 'ignoreerrors': True,
                 'restrictfilenames': True,

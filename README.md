@@ -7,6 +7,7 @@ Download entire YouTube playlists as high-quality MP4 videos or MP3 audio, using
 - Download full YouTube playlists in one go
 - Choose between MP3 (audio, 320kbps) or MP4 (best available video + audio quality)
 - Automatically organizes downloads into a folder named after the playlist
+- Resumes interrupted playlists by skipping videos already downloaded
 - Skips/reports errors on individual unavailable videos instead of stopping the whole download
 - GUI version with a simple point-and-click interface (PyQt5)
 
@@ -65,6 +66,7 @@ You'll be prompted to:
 2. Choose MP3 or MP4
 
 The script will create a folder named after the playlist and download every video into it.
+If a download is interrupted, run it again with the same playlist and format. Completed videos are skipped, and incomplete downloads are resumed when possible.
 
 ### GUI version
 

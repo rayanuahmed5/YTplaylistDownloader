@@ -135,6 +135,7 @@ os.makedirs(folder_title, exist_ok=True)
 
 common_opts = {
     'outtmpl': os.path.join(folder_title, '%(title)s.%(ext)s'),
+    'download_archive': os.path.join(folder_title, f'.download_archive_{file_format}.txt'),
     'quiet': False,
     'ignoreerrors': True,
     'restrictfilenames': True,  # sanitize video titles for safe cross-platform filenames
